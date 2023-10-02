@@ -7,6 +7,7 @@ using BattleBitAPI.Server;
 using GNABasic;
 using System.Net;
 using System.Reflection;
+using GNA.Core.CommandSystem.Commands;
 
 namespace GNA.Core
 {
@@ -15,7 +16,7 @@ namespace GNA.Core
         public static string CONFIG_FOLDER = Directory.GetCurrentDirectory();
         public static string LOG_FOLDER = Directory.GetCurrentDirectory();
         public static Dictionary<string, CustomServer> Servers = new();
-        public static Dictionary<string, SkillLevel> TempStorage = new();
+        public static Dictionary<string, int> TempStorage = new();
 
         private static JsonManager _manager;
         private static GlobalConfig _globalConfig;
@@ -79,11 +80,6 @@ namespace GNA.Core
 
             if (role != null)
                 player.StaffRole = (Roles) role;
-
-            bool hasSkillLevel = TempStorage.TryGetValue(steamId.ToString(), out SkillLevel skillLevel);
-
-            if (hasSkillLevel)
-                player.SkillLevel = skillLevel;
 
             return player;
         }
@@ -153,7 +149,6 @@ namespace GNA.Core
     {
         public bool IsAdmin = false;
         public Roles StaffRole = Roles.None;
-        public SkillLevel SkillLevel = SkillLevel.LOW;
 
         public void ErrorReply(string message)
         {
@@ -176,9 +171,6 @@ namespace GNA.Core
         private JsonManager _manager;
         private ServerConfig _serverConfig;
         private DiscordWebhooks webhooks;
-
-        private TeamSkill teamASkill = new TeamSkill(Team.TeamA);
-        private TeamSkill teamBSkill = new(Team.TeamB);
 
         public override async Task OnConnected()
         {
@@ -287,12 +279,6 @@ namespace GNA.Core
             player.SayToChat(result);
         }
 
-        public override async Task OnPlayerDisconnected(CustomPlayer player)
-        {
-            TeamSkill teamSkill = player.Team == Team.TeamA ? teamASkill : teamBSkill;
-            teamSkill.Decrement(player.SkillLevel);
-        }
-
         public override async Task<bool> OnPlayerTypedMessage(CustomPlayer player, ChatChannel channel, string msg)
         {
             if (Filter.IsFiltered(msg))
@@ -386,22 +372,6 @@ namespace GNA.Core
 
             if (role != null)
                 args.Stats.Roles = (Roles) role;
-
-            uint TotalLevel = (args.Stats.Progress.Prestige * 200) + args.Stats.Progress.Rank;
-            SkillLevel skillLevel = SkillLevel.LOW;
-
-            if (TotalLevel >= 51)
-                skillLevel = SkillLevel.MEDIUM;
-            else if (TotalLevel >= 200)
-                skillLevel = SkillLevel.HIGH;
-            else if (TotalLevel >= 600)
-                skillLevel = SkillLevel.INSANE;
-
-            Program.TempStorage.Add(steamID.ToString(), skillLevel);
-            args.Team = teamASkill.GetCount(skillLevel) >= teamBSkill.GetCount(skillLevel) ? Team.TeamB : Team.TeamA;
-
-            TeamSkill teamSkill = args.Team == Team.TeamA ? teamASkill : teamBSkill;
-            teamSkill.Increment(skillLevel);
         }
 
         public override async Task<bool> OnPlayerRequestingToChangeRole(CustomPlayer player, GameRole role)
@@ -421,6 +391,12 @@ namespace GNA.Core
             }
 
             return true;
+        }
+
+        public override async Task<bool> OnPlayerRequestingToChangeTeam(CustomPlayer player, Team requestedTeam)
+        {
+            player.ErrorReply("Due to players abusing the ability to swap, I am forced to disable team changing entirely. We do not have the ability to check party or clan, either, so please suggest that to Oki so I may make this more fun.");
+            return false;
         }
 
         public override async Task OnPlayerReported(CustomPlayer from, CustomPlayer to, ReportReason reason, string additional)
@@ -540,11 +516,6 @@ namespace GNA.Core
             }
         }
 
-        public SkillLevel GetSkillLevel(CustomPlayer player)
-        {
-            return player.SkillLevel;
-        }
-
         public DiscordWebhooks GetWebhook()
         {
             return webhooks;
@@ -639,48 +610,6 @@ namespace GNA.Core
         public override string ToString()
         {
             return GameIP + "-" + GamePort;
-        }
-    }
-
-    public class TeamSkill
-    {
-        public Team team;
-        public Dictionary<SkillLevel, int> skillCount;
-
-        public TeamSkill(Team team)
-        {
-            this.team = team;
-
-            skillCount = new()
-            {
-                {SkillLevel.LOW, 0},
-                {SkillLevel.MEDIUM, 0},
-                {SkillLevel.HIGH, 0},
-                {SkillLevel.INSANE, 0},
-            };
-        }
-
-        public void Increment(SkillLevel skillLevel)
-        {
-            skillCount[skillLevel] += 1;
-        }
-
-        public void Decrement(SkillLevel skillLevel)
-        {
-            skillCount[skillLevel] -= 1;
-        }
-
-        public int GetCount(SkillLevel skillLevel)
-        {
-            return skillCount[skillLevel];
-        }
-
-        public void Reset()
-        {
-            skillCount[SkillLevel.LOW] = 0;
-            skillCount[SkillLevel.MEDIUM] = 0;
-            skillCount[SkillLevel.HIGH] = 0;
-            skillCount[SkillLevel.INSANE] = 0;
         }
     }
 }
